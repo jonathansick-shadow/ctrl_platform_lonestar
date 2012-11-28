@@ -1,0 +1,85 @@
+#!/bin/bash
+#
+# Template Batch Script for Sun Grid Engine (SGE) at TACC Lonestar
+#
+# Submit this script using the command: qsub <script_name>
+#
+# The following are embedded QSUB options. The syntax is #$ (the # does
+# _not_  denote that the lines are commented out so do not remove).
+#
+# walltime : maximum wall clock time (hh:mm:ss)
+#$ -l  h_rt=$WALL_CLOCK
+#
+# For Lonestar specify the total core count to effectively specify
+# the number of nodes.  (you are always charged for the entire node)
+#$ -pe 1way $TOTAL_CORE_COUNT
+#
+# export all my environment variables to the job
+#$ -V
+#$ -A TG-AST100018
+#
+#$ -q $QUEUE
+#
+##
+# Send a notification email when the job (b)egins and when the (e)nds
+# # remove the line below to disable email notification.
+$EMAIL_NOTIFICATION
+# #
+# #
+# # filename for standard output (default = <job_name>.o<job_id>)
+# # at end of job, it is in directory from which qsub was executed
+# # remove extra ## from the line below if you want to name your own file
+#$ -o $SCRATCH_DIR/$OUTPUT_LOG
+# #
+# # filename for standard error (default = <job_name>.e<job_id>)
+# # at end of job, it is in directory from which qsub was executed
+# # remove extra ## from the line below if you want to name your own file
+#$ -e $SCRATCH_DIR/$ERROR_LOG
+#
+# #
+# # End of embedded QSUB options
+
+/bin/echo Beginning_Glidein_Setup
+
+# echo "PE_HOSTFILE"
+# cat ${PE_HOSTFILE}
+
+# The PE_HOSTFILE holds the names of the reserved nodes in a format with the
+# node name in the first column, one line per node
+# Separate out the node names into a separate file with this command below
+paste -d, <(cut --delimiter=' ' -f1 ${PE_HOSTFILE}) > pe_hostfile_parse.out
+
+# echo "Parsed PE_HOSTFILE"
+# cat pe_hostfile_parse.out
+
+# Parse the node names into an array/list
+hostcnt=0;
+for line in `sort pe_hostfile_parse.out | uniq`
+do
+    hostcnt=`expr $hostcnt + 1`;
+    hostname[$hostcnt]=$line
+done
+echo "names are:"
+for num in $(seq 1 $hostcnt)
+do
+    echo ${hostname[$num]}
+done
+
+echo "SSH Check"
+
+for num in $(seq 1 $hostcnt)
+do
+    ssh ${hostname[$num]} 'hostname -f' & 
+done
+wait
+
+echo "Launch condor_masters"
+
+for num in $(seq 1 $hostcnt)
+do
+    ssh ${hostname[$num]} "/bin/bash -c 'export CONDOR_CONFIG=$SCRATCH_DIR/$GENERATED_CONFIG;export _condor_CONDOR_HOST=lsst-launch.ncsa.illinois.edu;export _condor_GLIDEIN_HOST=lsst-launch.ncsa.illinois.edu;export _condor_LOCAL_DIR=$USER_HOME/condor_local;export _condor_SBIN=/share1/apps/teragrid/condor-7.4.4-r1/sbin;export _condor_NUM_CPUS=$SLOTS;export _condor_UID_DOMAIN=ncsa.illinois.edu;export _condor_FILESYSTEM_DOMAIN=tacc.utexas.edu;export _condor_MAIL=/bin/mail;export _condor_STARTD_NOCLAIM_SHUTDOWN=1800; /share1/projects/xsede/lsst/glidein_startup/glidein_startup_lonestar -dyn -f'" & 
+done
+
+wait
+
+date 
